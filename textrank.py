@@ -5,8 +5,12 @@
     project: CSCI544
     Author:  Jie li
     Date:    2017/3/26
-    Version: 0.0.1
+    Version: 0.0.2
     Summary: Generate KeyWords from Input which can be a sequence of string or a file.
+    Modificaton:
+        1. support python 2.7 and python 3.5
+        2. modify function genKeyWordFromFile. For each input file, it will generate two output. One will contain the poem it processes and another will contain the related keywords list.
+            
 
 """
 
@@ -52,7 +56,7 @@ class TextRank(object):
         self.packageset.add("snownlp")
         self.packageset.add("jieba")
         if pkg not in self.packageset:
-            print "parameter not right, use default setting: snownlp"
+            print("parameter not right, use default setting: snownlp")
             self.pkg = "snownlp"
             return
         self.pkg = pkg
@@ -70,7 +74,7 @@ class TextRank(object):
 
         """
         if pkg not in self.packageset:
-            print "parameter not right, didn't change package, use previous package: ",self.pkg
+            print("parameter not right, didn't change package, use previous package: ",self.pkg)
             return
         self.pkg = pkg
     def __textRankHandle(self,text,count):
@@ -117,7 +121,7 @@ class TextRank(object):
         """
         return self.__textRankHandle(text,count)
 
-    def genKeyWordFromFile(self,inputfile,outputfile,count=1):
+    def genKeyWordFromFile(self,inputfile,outputKeyWord,outputPoem,count=1):
         """generate keywords list for string in the inputfile
     
             receive a sequence of string as inputfile name, for each line in that file do the following operation:
@@ -129,8 +133,11 @@ class TextRank(object):
 
         Args:
             inputfile: a sequence of strings which represents a file to handle
-            outputfile: a sequence of strings which represents a file to write
+            outputKeyWord: a sequence of strings which represents a file to write the keywords
+            outputPoem: a sequence of strings which represents a file to write the poem
             count: the number of keywords generated from each string, default value is 1.
+
+            each line in outputKeyWord is mapped to the line in outputPoem.
         Returns:
             None
         Raises:
@@ -140,12 +147,16 @@ class TextRank(object):
         
         with codecs.open(inputfile,encoding='utf-8') as f:
             poemList = f.readlines()
-        outfile = open(outputfile, 'w')
-        base = len(poemList)/10
+        outfileKeyWord = open(outputKeyWord, 'w')
+        outfilePoem = open(outputPoem, 'w')
+        base = len(poemList)//10
         for num,poem in enumerate(poemList):
             if base!=0 and num%base==0:
-                print "finish.......",num/base*10,"%"
+                val = num//base
+                if val>0 and val<=10:
+                    print("finish.......",val*10,"%")
             #poem = unicode(poem.strip(),"utf-8")
+            origin = poem
             poem = poem.strip()
             sentences = re.split(u'：|:',poem)
             if len(sentences)!=2:
@@ -159,22 +170,28 @@ class TextRank(object):
             for line in sublines:
                 out = self.__textRankHandle(line,count)
                 if len(out) == 0:
-                    if self.debug: print " can not extract keyword from ",line
+                    if self.debug: print(" can not extract keyword from ",line)
                     break
                 elif len(out) > 1:
                     toWrite.append(u"：".join(out))
                 else:
                     toWrite.append(out[0])
             if len(toWrite)!= len(sublines):
-                if self.debug: print "can not generate keywords list for poem: ",sentences[0]
+                if self.debug: print("can not generate keywords list for poem: ",sentences[0])
             else:
-            	out = u"，".join(toWrite)+u'\r'
-                outfile.write(out.encode('utf-8'))
+                out = u"，".join(toWrite)+u'\r'
+                if sys.version_info < (3, 0):
+                    outfileKeyWord.write(out.encode('utf-8'))
+                    outfilePoem.write(origin.encode('utf-8'))
+                else:
+                    outfileKeyWord.write(out)
+                    outfilePoem.write(origin)
                 linecount = linecount + 1
-        outfile.close()
-        print "generate keywords for file ",inputfile," finished"
-        print "total ", len(poemList), " poems"
-        print "handle ", linecount, "poems"
+        outfileKeyWord.close()
+        outfilePoem.close()
+        print("generate keywords for file ",inputfile," finished")
+        print("total ", len(poemList), " poems")
+        print("handle ", linecount, "poems")
 
 
 def test():
@@ -187,8 +204,8 @@ def test():
         #use jieba package
         jiebaTextRank = TextRank("jieba")
 
-        # read data from file and write keywords 
-        snowTextRank.genKeyWordFromFile("5or7.txt","output.txt") to file.
+        # read data from file and write keywords to file.
+        snowTextRank.genKeyWordFromFile("5or7.txt","output.txt") 
 
 
         #generate keywords list from a sequence of string.
@@ -197,6 +214,16 @@ def test():
 
 
     """
+    snowTextRank = TextRank()  
+    snowTextRank.genKeyWordFromFile("5or7.txt","keyword.txt","poem.txt")
+    # s = "春天的桃花开了"
+    # ret = snowTextRank.genKeyWordFromText(s)
+    # if sys.version_info < (3, 0):
+    #     for x in ret:
+    #         print(x)
+    # else:
+    #     print(ret)
+
     pass
 
 if __name__ == "__main__":
