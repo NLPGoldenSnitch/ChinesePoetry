@@ -2,9 +2,11 @@ import tensorflow as tf
 
 def bidir_attn_seq2seq(
       enc_inputs,
-      dec_inputs, cell,
+      dec_inputs,
+      cell,
       cell_size,
-      vocab_size,
+      enc_vocab_size,
+      dec_vocab_size,
       num_heads = 1,
       input_embedding = True,
       output_projection = None,
@@ -21,12 +23,12 @@ def bidir_attn_seq2seq(
     dec_inputs: a list of 2D int32 Tensor of shape [batch_size, cell_size]
     cell: a RNN cell function
     cell_size: dimension for input data
-    vocab_size: vocabulary size
+    enc_vocab_size: vocabulary size
   """
   with tf.variable_scope(scope or "bidir_attn_seq2seq", dtype=dtype) as scope:
     # encoder
     if(input_embedding == True):
-      embedding = tf.get_variable("embedding", [vocab_size, cell_size])
+      embedding = tf.get_variable("embedding", [enc_vocab_size, cell_size])
       embedded_inputs = [tf.nn.embedding_lookup(embedding, batch) for batch in enc_inputs]
     else:
       embedded_inputs = enc_inputs
@@ -36,6 +38,8 @@ def bidir_attn_seq2seq(
                                          enc_cell_fw,
                                          enc_cell_bw,
                                          embedded_inputs,
+                                         initial_state_fw = initial_state_fw,
+                                         initial_state_bw = initial_state_bw,
                                          dtype = dtype
                                        )
     # First calculate a concatenation of encoder outputs to put attention on.
@@ -52,8 +56,8 @@ def bidir_attn_seq2seq(
     dec_cell = cell(cell_size)
     output_size = None
     if output_projection is None:
-      dec_cell = tf.contrib.rnn.OutputProjectionWrapper(dec_cell, vocab_size)
-      output_size = vocab_size
+      dec_cell = tf.contrib.rnn.OutputProjectionWrapper(dec_cell, dec_vocab_size)
+      output_size = dec_vocab_size
     dec_init_state = tf.matmul(enc_state, enc2dec_w) + enc2dec_b
 
     return tf.contrib.legacy_seq2seq.embedding_attention_decoder(
@@ -61,7 +65,7 @@ def bidir_attn_seq2seq(
              dec_init_state,
              attention_states,
              dec_cell,
-             vocab_size,
+             dec_vocab_size,
              cell_size,
              num_heads = num_heads,
              output_size = output_size,

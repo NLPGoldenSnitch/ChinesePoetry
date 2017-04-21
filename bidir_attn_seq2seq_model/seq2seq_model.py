@@ -27,6 +27,8 @@ import tensorflow as tf
 
 import data_utils
 
+from bidir_attn_seq2seq import bidir_attn_seq2seq
+
 
 class Seq2SeqModel(object):
   """Sequence-to-sequence model with attention and for multiple buckets.
@@ -130,15 +132,25 @@ class Seq2SeqModel(object):
 
     # The seq2seq function: we use embedding for the input and attention.
     def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
-      return tf.contrib.legacy_seq2seq.bidirectional_attention_seq2seq(
-          encoder_inputs,
-          decoder_inputs,
-          tf.contrib.rnn.GRUCell,
-          num_encoder_symbols=source_vocab_size,
-          num_decoder_symbols=target_vocab_size,
-          embedding_size=size,
-          output_projection=output_projection,
-          feed_previous=do_decode,
+      #return tf.contrib.legacy_seq2seq.bidirectional_attention_seq2seq(
+      #    encoder_inputs,
+      #    decoder_inputs,
+      #    tf.contrib.rnn.GRUCell,
+      #    num_encoder_symbols=source_vocab_size,
+      #    num_decoder_symbols=target_vocab_size,
+      #    embedding_size=size,
+      #    output_projection=output_projection,
+      #    feed_previous=do_decode,
+      #    dtype=dtype)
+      return bidir_attn_seq2seq(
+          enc_inputs = encoder_inputs,
+          dec_inputs = decoder_inputs,
+          cell = tf.contrib.rnn.GRUCell,
+          cell_size = size,
+          enc_vocab_size = source_vocab_size,
+          dec_vocab_size = target_vocab_size,
+          output_projection = output_projection,
+          feed_previous = do_decode,
           dtype=dtype)
 
     # Feeds for inputs.
