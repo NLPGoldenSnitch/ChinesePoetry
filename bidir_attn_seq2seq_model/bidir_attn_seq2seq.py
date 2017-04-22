@@ -7,6 +7,8 @@ def bidir_attn_seq2seq(
       cell_size,
       enc_vocab_size,
       dec_vocab_size,
+      key_inputs = None,
+      key_length = None,
       num_heads = 1,
       input_embedding = True,
       output_projection = None,
@@ -26,6 +28,20 @@ def bidir_attn_seq2seq(
     enc_vocab_size: vocabulary size
   """
   with tf.variable_scope(scope or "bidir_attn_seq2seq", dtype=dtype) as scope:
+    # keyword bi-directional RNN
+    if key_inputs and key_length is not None:
+      key_cell_fw = cell(cell_size)
+      key_cell_bw = cell(cell_size)
+      _, key_states = tf.nn.bidirectional_dynamic_rnn(
+                        key_cell_fw,
+                        key_cell_bw,
+                        key_inputs,
+                        sequence_length = key_length,
+                        time_major = True
+                      )
+      initial_state_fw = key_states[0]
+      initial_state_bw = key_states[1]
+
     # encoder
     if(input_embedding == True):
       embedding = tf.get_variable("embedding", [enc_vocab_size, cell_size])
@@ -91,6 +107,7 @@ if __name__ == '__main__':
     dec_inputs,
     tf.contrib.rnn.GRUCell,
     cell_size,
+    vocab_size,
     vocab_size,
     dtype = tf.float32
   )
