@@ -3,12 +3,9 @@
 python3 translate.py \
   --train_dir=./tmp \
   --data_dir=./data \
-  --from_train_data=./data/titles.en \
-  --to_train_data=./data/titles.fi \
-  --from_dev_data=./data/dev/titles.en \
-  --to_dev_data=./data/dev/titles.fi \
   --from_vocab_size=5530 \
   --to_vocab_size=5720 \
-  --size=128 \
+  --key_size=3 \
+  --size=64 \
   --num_layers=1 \
   --decode

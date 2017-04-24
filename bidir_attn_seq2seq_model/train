@@ -3,13 +3,13 @@
 python3 translate.py \
   --train_dir=./tmp \
   --data_dir=./data \
+  --key_train_data=./data/q7.key \
+  --key_size=3 \
   --from_train_data=./data/q7.from \
   --to_train_data=./data/q7.to \
-  --from_dev_data=./data/dev/q7.from \
-  --to_dev_data=./data/dev/q7.to \
   --from_vocab_size=5530 \
   --to_vocab_size=5720 \
-  --size=128 \
+  --size=64 \
   --num_layers=1 \
   --learning_rate=0.6 \
-  --learning_rate_decay_factor=0.98
+  --learning_rate_decay_factor=0.99

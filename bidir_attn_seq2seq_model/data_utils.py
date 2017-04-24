@@ -132,26 +132,27 @@ def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size,
   if not gfile.Exists(vocabulary_path):
     print("Creating vocabulary %s from data %s" % (vocabulary_path, data_path))
     vocab = {}
-    with gfile.GFile(data_path, mode="rb") as f:
-      counter = 0
-      for line in f:
-        counter += 1
-        if counter % 100000 == 0:
-          print("  processing line %d" % counter)
-        line = tf.compat.as_bytes(line)
-        tokens = tokenizer(line) if tokenizer else basic_tokenizer(line)
-        for w in tokens:
-          word = _DIGIT_RE.sub(b"0", w) if normalize_digits else w
-          if word in vocab:
-            vocab[word] += 1
-          else:
-            vocab[word] = 1
-      vocab_list = _START_VOCAB + sorted(vocab, key=vocab.get, reverse=True)
-      if len(vocab_list) > max_vocabulary_size:
-        vocab_list = vocab_list[:max_vocabulary_size]
-      with gfile.GFile(vocabulary_path, mode="wb") as vocab_file:
-        for w in vocab_list:
-          vocab_file.write(w + b"\n")
+    for p in data_path:
+      with gfile.GFile(p, mode="rb") as f:
+        counter = 0
+        for line in f:
+          counter += 1
+          if counter % 100000 == 0:
+            print("  processing line %d" % counter)
+          line = tf.compat.as_bytes(line)
+          tokens = tokenizer(line) if tokenizer else basic_tokenizer(line)
+          for w in tokens:
+            word = _DIGIT_RE.sub(b"0", w) if normalize_digits else w
+            if word in vocab:
+              vocab[word] += 1
+            else:
+              vocab[word] = 1
+    vocab_list = _START_VOCAB + sorted(vocab, key=vocab.get, reverse=True)
+    if len(vocab_list) > max_vocabulary_size:
+      vocab_list = vocab_list[:max_vocabulary_size]
+    with gfile.GFile(vocabulary_path, mode="wb") as vocab_file:
+      for w in vocab_list:
+        vocab_file.write(w + b"\n")
 
 
 def initialize_vocabulary(vocabulary_path):
@@ -275,7 +276,7 @@ def prepare_wmt_data(data_dir, en_vocabulary_size, fr_vocabulary_size, tokenizer
                       fr_vocabulary_size, tokenizer)
 
 
-def prepare_data(data_dir, from_train_path, to_train_path, from_dev_path, to_dev_path, from_vocabulary_size,
+def prepare_data(data_dir, key_train_path, from_train_path, to_train_path, key_dev_path, from_dev_path, to_dev_path, from_vocabulary_size,
                  to_vocabulary_size, tokenizer=None):
   """Preapre all necessary files that are required for the training.
 
@@ -299,6 +300,7 @@ def prepare_data(data_dir, from_train_path, to_train_path, from_dev_path, to_dev
         (5) path to the "from language" vocabulary file,
         (6) path to the "to language" vocabulary file.
     """
+  with_key = key_train_path is not None and key_dev_path is not None
   # Create vocabularies of the appropriate sizes.
   to_vocab_path = os.path.join(data_dir, "vocab%d.to" % to_vocabulary_size)
   from_vocab_path = os.path.join(data_dir, "vocab%d.from" % from_vocabulary_size)
@@ -310,13 +312,21 @@ def prepare_data(data_dir, from_train_path, to_train_path, from_dev_path, to_dev
   from_train_ids_path = from_train_path + (".ids%d" % from_vocabulary_size)
   data_to_token_ids(to_train_path, to_train_ids_path, to_vocab_path, tokenizer)
   data_to_token_ids(from_train_path, from_train_ids_path, from_vocab_path, tokenizer)
+  key_train_ids_path = None
+  if with_key:
+    key_train_ids_path = key_train_path + (".ids%d" % from_vocabulary_size)
+    data_to_token_ids(key_train_path, key_train_ids_path, from_vocab_path, tokenizer)
 
   # Create token ids for the development data.
   to_dev_ids_path = to_dev_path + (".ids%d" % to_vocabulary_size)
   from_dev_ids_path = from_dev_path + (".ids%d" % from_vocabulary_size)
   data_to_token_ids(to_dev_path, to_dev_ids_path, to_vocab_path, tokenizer)
   data_to_token_ids(from_dev_path, from_dev_ids_path, from_vocab_path, tokenizer)
+  key_dev_ids_path = None
+  if with_key:
+    key_dev_ids_path = key_dev_path + (".ids%d" % from_vocabulary_size)
+    data_to_token_ids(key_dev_path, key_dev_ids_path, from_vocab_path, tokenizer)
 
-  return (from_train_ids_path, to_train_ids_path,
-          from_dev_ids_path, to_dev_ids_path,
+  return (key_train_ids_path, from_train_ids_path, to_train_ids_path,
+          key_dev_ids_path, from_dev_ids_path, to_dev_ids_path,
           from_vocab_path, to_vocab_path)

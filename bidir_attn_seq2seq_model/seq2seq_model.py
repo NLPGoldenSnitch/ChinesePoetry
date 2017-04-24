@@ -55,6 +55,7 @@ class Seq2SeqModel(object):
                batch_size,
                learning_rate,
                learning_rate_decay_factor,
+               key_size = 0,
                use_lstm=False,
                num_samples=512,
                forward_only=False,
@@ -131,6 +132,7 @@ class Seq2SeqModel(object):
       cell = tf.contrib.rnn.MultiRNNCell([single_cell() for _ in range(num_layers)])
 
     # The seq2seq function: we use embedding for the input and attention.
+    self.key_inputs = None if key_size == 0 else []
     def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
       #return tf.contrib.legacy_seq2seq.bidirectional_attention_seq2seq(
       #    encoder_inputs,
@@ -143,6 +145,7 @@ class Seq2SeqModel(object):
       #    feed_previous=do_decode,
       #    dtype=dtype)
       return bidir_attn_seq2seq(
+          key_inputs = self.key_inputs,
           enc_inputs = encoder_inputs,
           dec_inputs = decoder_inputs,
           cell = tf.contrib.rnn.GRUCell,
@@ -157,6 +160,9 @@ class Seq2SeqModel(object):
     self.encoder_inputs = []
     self.decoder_inputs = []
     self.target_weights = []
+    for i in xrange(key_size):
+      self.key_inputs.append(tf.placeholder(tf.int32, shape=[None],
+                                                name="key{0}".format(i)))
     for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.
       self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
                                                 name="encoder{0}".format(i)))
@@ -206,8 +212,8 @@ class Seq2SeqModel(object):
 
     self.saver = tf.train.Saver(tf.global_variables())
 
-  def step(self, session, encoder_inputs, decoder_inputs, target_weights,
-           bucket_id, forward_only):
+  def step(self, session, key_inputs, encoder_inputs, decoder_inputs, target_weights,
+           bucket_id, forward_only, key_size = 0):
     """Run a step of the model feeding the given inputs.
 
     Args:
@@ -240,6 +246,8 @@ class Seq2SeqModel(object):
 
     # Input feed: encoder inputs, decoder inputs, target_weights, as provided.
     input_feed = {}
+    for l in xrange(key_size):
+      input_feed[self.key_inputs[l].name] = key_inputs[l]
     for l in xrange(encoder_size):
       input_feed[self.encoder_inputs[l].name] = encoder_inputs[l]
     for l in xrange(decoder_size):
@@ -266,7 +274,7 @@ class Seq2SeqModel(object):
     else:
       return None, outputs[0], outputs[1:]  # No gradient norm, loss, outputs.
 
-  def get_batch(self, data, bucket_id):
+  def get_batch(self, data, bucket_id, key_size = 0):
     """Get a random batch of data from the specified bucket, prepare for step.
 
     To feed data in step(..) it must be a list of batch-major vectors, while
@@ -283,12 +291,20 @@ class Seq2SeqModel(object):
       the constructed batch that has the proper format to call step(...) later.
     """
     encoder_size, decoder_size = self.buckets[bucket_id]
-    encoder_inputs, decoder_inputs = [], []
+
+    key_inputs, encoder_inputs, decoder_inputs = [], [], []
 
     # Get a random batch of encoder and decoder inputs from data,
     # pad them if needed, reverse encoder inputs and add GO to decoder.
     for _ in xrange(self.batch_size):
-      encoder_input, decoder_input = random.choice(data[bucket_id])
+      if key_size != 0:
+        key_input, encoder_input, decoder_input = random.choice(data[bucket_id])
+      else:
+        encoder_input, decoder_input = random.choice(data[bucket_id]) 
+      if key_size != 0:
+        # key inputs are padded and then reversed.
+        key_pad = [data_utils.PAD_ID] * (key_size - len(key_input))
+        key_inputs.append(list(reversed(key_input + key_pad)))
 
       # Encoder inputs are padded and then reversed.
       encoder_pad = [data_utils.PAD_ID] * (encoder_size - len(encoder_input))
@@ -300,8 +316,14 @@ class Seq2SeqModel(object):
                             [data_utils.PAD_ID] * decoder_pad_size)
 
     # Now we create batch-major vectors from the data selected above.
-    batch_encoder_inputs, batch_decoder_inputs, batch_weights = [], [], []
+    batch_key_inputs, batch_encoder_inputs, batch_decoder_inputs, batch_weights = [], [], [], []
 
+    # Batch encoder inputs are just re-indexed encoder_inputs.
+    if key_size != 0:
+      for length_idx in xrange(key_size):
+        batch_key_inputs.append(
+            np.array([key_inputs[batch_idx][length_idx]
+                      for batch_idx in xrange(self.batch_size)], dtype=np.int32))
     # Batch encoder inputs are just re-indexed encoder_inputs.
     for length_idx in xrange(encoder_size):
       batch_encoder_inputs.append(
@@ -324,4 +346,4 @@ class Seq2SeqModel(object):
         if length_idx == decoder_size - 1 or target == data_utils.PAD_ID:
           batch_weight[batch_idx] = 0.0
       batch_weights.append(batch_weight)
-    return batch_encoder_inputs, batch_decoder_inputs, batch_weights
+    return batch_key_inputs, batch_encoder_inputs, batch_decoder_inputs, batch_weights

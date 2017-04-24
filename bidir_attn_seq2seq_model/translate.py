@@ -54,13 +54,16 @@ tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
 tf.app.flags.DEFINE_integer("batch_size", 64,
                             "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("size", 1024, "Size of each model layer.")
+tf.app.flags.DEFINE_integer("key_size", 0, "Keyword size.")
 tf.app.flags.DEFINE_integer("num_layers", 3, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("from_vocab_size", 40000, "English vocabulary size.")
 tf.app.flags.DEFINE_integer("to_vocab_size", 40000, "French vocabulary size.")
 tf.app.flags.DEFINE_string("data_dir", "/tmp", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "/tmp", "Training directory.")
+tf.app.flags.DEFINE_string("key_train_data", None, "Training data.")
 tf.app.flags.DEFINE_string("from_train_data", None, "Training data.")
 tf.app.flags.DEFINE_string("to_train_data", None, "Training data.")
+tf.app.flags.DEFINE_string("key_dev_data", None, "Training data.")
 tf.app.flags.DEFINE_string("from_dev_data", None, "Training data.")
 tf.app.flags.DEFINE_string("to_dev_data", None, "Training data.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
@@ -81,7 +84,7 @@ FLAGS = tf.app.flags.FLAGS
 _buckets = [(32, 10)]
 
 
-def read_data(source_path, target_path, max_size=None):
+def read_data(key_path, source_path, target_path, max_size=None):
   """Read data from source and target files and put into buckets.
 
   Args:
@@ -99,8 +102,12 @@ def read_data(source_path, target_path, max_size=None):
       len(target) < _buckets[n][1]; source and target are lists of token-ids.
   """
   data_set = [[] for _ in _buckets]
+  with_key = key_path is not None
+  if with_key:
+    key_file = open(key_path, "r")
   with tf.gfile.GFile(source_path, mode="r") as source_file:
     with tf.gfile.GFile(target_path, mode="r") as target_file:
+      if with_key: key = key_file.readline()
       source, target = source_file.readline(), target_file.readline()
       counter = 0
       while source and target and (not max_size or counter < max_size):
@@ -110,12 +117,17 @@ def read_data(source_path, target_path, max_size=None):
           sys.stdout.flush()
         source_ids = [int(x) for x in source.split()]
         target_ids = [int(x) for x in target.split()]
+        if with_key:
+          key_ids = [int(x) for x in key.split()]
         target_ids.append(data_utils.EOS_ID)
         for bucket_id, (source_size, target_size) in enumerate(_buckets):
           if len(source_ids) < source_size and len(target_ids) < target_size:
-            data_set[bucket_id].append([source_ids, target_ids])
+            data_set[bucket_id].append(([key_ids] if with_key else []) + [source_ids, target_ids])
             break
         source, target = source_file.readline(), target_file.readline()
+        if with_key: key = key_file.readline()
+  if with_key:
+    key_file.close()
   return data_set
 
 
@@ -132,6 +144,7 @@ def create_model(session, forward_only):
       FLAGS.batch_size,
       FLAGS.learning_rate,
       FLAGS.learning_rate_decay_factor,
+      key_size = FLAGS.key_size,
       forward_only=forward_only,
       dtype=dtype)
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
@@ -146,22 +159,30 @@ def create_model(session, forward_only):
 
 def train():
   """Train a en->fr translation model using WMT data."""
+  key_train = None
   from_train = None
   to_train = None
+  key_dev = None
   from_dev = None
   to_dev = None
   if FLAGS.from_train_data and FLAGS.to_train_data:
+    key_train_data = FLAGS.key_train_data
     from_train_data = FLAGS.from_train_data
     to_train_data = FLAGS.to_train_data
+    key_dev_data = key_train_data
     from_dev_data = from_train_data
     to_dev_data = to_train_data
+    if FLAGS.key_dev_data:
+      key_dev_data = FLAGS.key_dev_data
     if FLAGS.from_dev_data and FLAGS.to_dev_data:
       from_dev_data = FLAGS.from_dev_data
       to_dev_data = FLAGS.to_dev_data
-    from_train, to_train, from_dev, to_dev, _, _ = data_utils.prepare_data(
+    key_train, from_train, to_train, key_dev, from_dev, to_dev, _, _ = data_utils.prepare_data(
         FLAGS.data_dir,
+        key_train_data,
         from_train_data,
         to_train_data,
+        key_dev_data,
         from_dev_data,
         to_dev_data,
         FLAGS.from_vocab_size,
@@ -180,8 +201,8 @@ def train():
     # Read data into buckets and compute their sizes.
     print ("Reading development and training data (limit: %d)."
            % FLAGS.max_train_data_size)
-    dev_set = read_data(from_dev, to_dev)
-    train_set = read_data(from_train, to_train, FLAGS.max_train_data_size)
+    dev_set = read_data(key_dev, from_dev, to_dev)
+    train_set = read_data(key_train, from_train, to_train, FLAGS.max_train_data_size)
     train_bucket_sizes = [len(train_set[b]) for b in xrange(len(_buckets))]
     train_total_size = float(sum(train_bucket_sizes))
 
@@ -204,10 +225,10 @@ def train():
 
       # Get a batch and make a step.
       start_time = time.time()
-      encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-          train_set, bucket_id)
-      _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
-                                   target_weights, bucket_id, False)
+      key_inputs, encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+          train_set, bucket_id, key_size = FLAGS.key_size)
+      _, step_loss, _ = model.step(sess, key_inputs, encoder_inputs, decoder_inputs,
+                                   target_weights, bucket_id, False, key_size = FLAGS.key_size)
       step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
       loss += step_loss / FLAGS.steps_per_checkpoint
       current_step += 1
@@ -232,10 +253,10 @@ def train():
           if len(dev_set[bucket_id]) == 0:
             print("  eval: empty bucket %d" % (bucket_id))
             continue
-          encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-              dev_set, bucket_id)
-          _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
-                                       target_weights, bucket_id, True)
+          key_inputs, encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+              dev_set, bucket_id, key_size = FLAGS.key_size)
+          _, eval_loss, _ = model.step(sess, key_inputs, encoder_inputs, decoder_inputs,
+                                       target_weights, bucket_id, True, key_size=FLAGS.key_size)
           eval_ppx = math.exp(float(eval_loss)) if eval_loss < 300 else float(
               "inf")
           print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
@@ -262,6 +283,10 @@ def decode():
     sentence = sys.stdin.readline()
     while sentence:
       # Get token-ids for the input sentence.
+      if FLAGS.key_size != 0:
+        sentence = sentence.split(':')
+        key_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence[0].strip()), en_vocab)
+        sentence = sentence[1].strip()
       token_ids = data_utils.sentence_to_token_ids(tf.compat.as_bytes(sentence), en_vocab)
       # Which bucket does it belong to?
       bucket_id = len(_buckets) - 1
@@ -273,11 +298,12 @@ def decode():
         logging.warning("Sentence truncated: %s", sentence)
 
       # Get a 1-element batch to feed the sentence to the model.
-      encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-          {bucket_id: [(token_ids, [])]}, bucket_id)
+      key_data = () if FLAGS.key_size == 0 else (key_ids, )
+      key_inputs, encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+          {bucket_id: [key_data + (token_ids, [])]}, bucket_id, key_size = FLAGS.key_size)
       # Get output logits for the sentence.
-      _, _, output_logits = model.step(sess, encoder_inputs, decoder_inputs,
-                                       target_weights, bucket_id, True)
+      _, _, output_logits = model.step(sess, key_inputs, encoder_inputs, decoder_inputs,
+                                       target_weights, bucket_id, True, key_size = FLAGS.key_size)
       # This is a greedy decoder - outputs are just argmaxes of output_logits.
       outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
       # If there is an EOS symbol in outputs, cut them at that point.
