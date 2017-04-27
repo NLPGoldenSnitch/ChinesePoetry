@@ -107,10 +107,9 @@ def run(isGen):
                 for j in range(args.keyword_length):
                     feed_dict[model.keyword_data[j]] = tmp[j]
                 for a in range(args.poem_form[1]+1):
-                    feed_dict[model.decoder_data[a]] = [0 for b in range(args.batch_size)]
-                    feed_dict[model.target_data[a]] = [0 for b in range(args.batch_size)]
-                feed_dict[model.lr] = args.learning_rate
-                train_loss,probs,new_sentence = sess.run([model.loss,model.probs,model.generate_outputid],feed_dict)
+                    feed_dict[model.decoder_data[a]] = [0 for b in range(1)]
+                    feed_dict[model.target_data[a]] = [0 for b in range(1)]
+                probs,new_sentence = sess.run([model.probs,model.generate_outputid],feed_dict)
                 result = ''
                 for j in new_sentence:
                     result+=data.convertId2Word(j[0])
