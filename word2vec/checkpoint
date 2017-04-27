@@ -1,2 +1,0 @@
-model_checkpoint_path: "word2vec_embeddings"
-all_model_checkpoint_paths: "word2vec_embeddings"
