@@ -5,7 +5,6 @@ python3 translate.py \
   --data_dir=./data \
   --from_vocab_size=5530 \
   --to_vocab_size=5720 \
-  --key_size=3 \
   --size=64 \
   --num_layers=1 \
   --decode

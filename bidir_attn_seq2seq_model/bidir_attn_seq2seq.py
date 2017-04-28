@@ -8,6 +8,7 @@ def bidir_attn_seq2seq(
       enc_vocab_size,
       dec_vocab_size,
       key_inputs = None,
+      key_length = None,
       num_heads = 1,
       input_embedding = True,
       output_projection = None,
@@ -27,28 +28,21 @@ def bidir_attn_seq2seq(
     enc_vocab_size: vocabulary size
   """
   with tf.variable_scope(scope or "bidir_attn_seq2seq", dtype=dtype) as scope:
-    embedding = tf.get_variable("embedding", [enc_vocab_size, cell_size])
-    # keyword bi-directional RNN
-    if key_inputs is not None:
-      if(input_embedding == True):
-        embedded_key_inputs = [tf.nn.embedding_lookup(embedding, batch) for batch in key_inputs]
-      else:
-        embedded_key_inputs = key_inputs
+    # keyword
+    if key_inputs is not None and key_length is not None:
       key_cell_fw = cell(cell_size)
       key_cell_bw = cell(cell_size)
-      _, *key_states = tf.contrib.rnn.static_bidirectional_rnn(
+      _, key_states = tf.nn.bidirectional_dynamic_rnn(
                         key_cell_fw,
                         key_cell_bw,
-                        embedded_key_inputs,
-                        dtype = dtype,
-                        scope="key_bidir"
+                        key_inputs,
+                        sequence_length = key_length
                       )
-      initial_state_fw = key_states[0]
-      initial_state_bw = key_states[1]
-
+      enc_cell_fw = key_states[0]
+      enc_cell_bw = key_states[1]
     # encoder
-    #embedding = tf.get_variable("embedding", [enc_vocab_size, cell_size])
     if(input_embedding == True):
+      embedding = tf.get_variable("embedding", [enc_vocab_size, cell_size])
       embedded_inputs = [tf.nn.embedding_lookup(embedding, batch) for batch in enc_inputs]
     else:
       embedded_inputs = enc_inputs
@@ -60,8 +54,7 @@ def bidir_attn_seq2seq(
                                          embedded_inputs,
                                          initial_state_fw = initial_state_fw,
                                          initial_state_bw = initial_state_bw,
-                                         dtype = dtype,
-                                         scope="enc_dir"
+                                         dtype = dtype
                                        )
     # First calculate a concatenation of encoder outputs to put attention on.
     top_states = [
@@ -112,7 +105,6 @@ if __name__ == '__main__':
     dec_inputs,
     tf.contrib.rnn.GRUCell,
     cell_size,
-    vocab_size,
     vocab_size,
     dtype = tf.float32
   )
