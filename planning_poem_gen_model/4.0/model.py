@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # file: model.py
-# author: Li Jie
+# author: Hongyi Ren
 # ------------------------------------------------------------------------
 import os
 import sys
