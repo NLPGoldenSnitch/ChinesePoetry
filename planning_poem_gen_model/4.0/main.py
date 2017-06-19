@@ -1,7 +1,7 @@
 # python
 # -*- coding: utf-8 -*-
 # file: data.py
-# author: Jie Li
+# author: Hongyi Ren
 # ------------------------------------------------------------------------
 import collections
 import os
